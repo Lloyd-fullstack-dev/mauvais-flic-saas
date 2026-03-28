@@ -5,12 +5,24 @@ import { Resend } from 'resend';
 // On initialise Resend avec ta clé secrète
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export async function GET() {
+// 🚨 Attention : on a ajouté "request: Request" entre les parenthèses
+export async function GET(request: Request) { 
+  
+  // --- LE CADENAS DE SÉCURITÉ ---
+  const authHeader = request.headers.get('authorization');
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json(
+      { error: "Accès refusé. Seul Vercel possède la clé." }, 
+      { status: 401 }
+    );
+  }
+  // ------------------------------
+
   try {
     // 1. On cherche toutes les factures "en attente" (pending)
     const { data: invoices, error } = await supabase
       .from('invoices')
-      .select('*, clients(name, email)') // On récupère aussi les infos du client lié
+      .select('*, clients(name, email)')
       .eq('status', 'pending');
 
     if (error) throw error;
@@ -25,13 +37,11 @@ export async function GET() {
     for (const invoice of invoices) {
       const dueDate = new Date(invoice.due_date);
 
-      // Si la date d'échéance est passée (et qu'on n'a pas encore fait 3 relances)
       if (dueDate < today && invoice.reminder_level < 3) {
         
         const clientEmail = invoice.clients.email;
         const clientName = invoice.clients.name;
         
-        // 3. On prépare le texte de l'e-mail selon le niveau de relance
         let emailSubject = "";
         let emailText = "";
 
@@ -48,13 +58,13 @@ export async function GET() {
 
         // 4. On envoie l'e-mail avec Resend
         await resend.emails.send({
-          from: 'Recouvrement <onboarding@resend.dev>', // Adresse de test par défaut de Resend
+          from: 'Recouvrement <onboarding@resend.dev>',
           to: clientEmail,
           subject: emailSubject,
           text: emailText,
         });
 
-        // 5. On met à jour la base de données pour dire qu'on a envoyé une relance supplémentaire
+        // 5. On met à jour le niveau de relance
         await supabase
           .from('invoices')
           .update({ reminder_level: invoice.reminder_level + 1 })
