@@ -1,60 +1,52 @@
 import { NextResponse } from 'next/server';
-// NOUVEAU : On importe createClient directement pour fabriquer le passe-partout
 import { createClient } from '@supabase/supabase-js'; 
 import { Resend } from 'resend';
 
+export const dynamic = 'force-dynamic';
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// NOUVEAU : On crée une connexion Supabase spéciale "Robot" avec la clé secrète qui contourne le RLS
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function replaceVariables(text: string, invoice: any, clientName: string) {
+  if (!text) return "";
+  return text
+    .replace(/\[clientName\]/g, clientName)
+    .replace(/\[invoiceNumber\]/g, invoice.invoice_number)
+    .replace(/\[amount\]/g, invoice.amount.toString())
+    .replace(/\[dueDate\]/g, invoice.due_date);
+}
+
 export async function GET(request: Request) { 
-  // --- LE CADENAS DE SÉCURITÉ ---
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json(
-      { error: "Accès refusé. Seul Vercel possède la clé." }, 
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Accès refusé." }, { status: 401 });
   }
-  // ------------------------------
 
   try {
-    // 1. On cherche toutes les factures "en attente" (pending)
-    // ATTENTION : J'ai rajouté "user_id" ici pour pouvoir lire le profil
     const { data: invoices, error } = await supabaseAdmin
       .from('invoices')
       .select('*, clients(name, email, user_id)')
       .eq('status', 'pending');
 
     if (error) throw error;
-    if (!invoices || invoices.length === 0) {
-      return NextResponse.json({ message: "Aucune facture en attente." });
-    }
+    if (!invoices || invoices.length === 0) return NextResponse.json({ message: "Aucune facture en attente." });
 
     const today = new Date();
     let emailsSent = 0;
 
-    // 2. On analyse chaque facture
     for (const invoice of invoices) {
       const dueDate = new Date(invoice.due_date);
 
       if (dueDate < today && invoice.reminder_level < 3) {
         
-        // On cherche le paramètre personnalisé de l'utilisateur
-        // On gère le cas où clients serait un tableau selon la structure Supabase
         const clientId = Array.isArray(invoice.clients) ? invoice.clients[0]?.user_id : invoice.clients?.user_id;
+        const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', clientId).single();
         
-        const { data: profile } = await supabaseAdmin
-          .from('profiles')
-          .select('reminder_interval_days')
-          .eq('id', clientId)
-          .single();
-        
-        const customInterval = invoice.custom_interval_days || profile?.reminder_interval_days || 7;
+        const customInterval = invoice.custom_interval_days || profile?.reminder_interval_days || 7; 
         let shouldSendEmail = false;
 
         if (invoice.reminder_level === 0) {
@@ -63,10 +55,7 @@ export async function GET(request: Request) {
           const lastReminder = new Date(invoice.last_reminder_date);
           const diffTime = Math.abs(today.getTime() - lastReminder.getTime());
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          
-          if (diffDays >= customInterval) {
-            shouldSendEmail = true;
-          }
+          if (diffDays >= customInterval) shouldSendEmail = true;
         }
 
         if (shouldSendEmail) {
@@ -77,26 +66,30 @@ export async function GET(request: Request) {
           let emailText = "";
 
           if (invoice.reminder_level === 0) {
-            emailSubject = `Rappel amical : Facture ${invoice.invoice_number} arrivée à échéance`;
-            emailText = `Bonjour ${clientName},\n\nSauf erreur de notre part, la facture ${invoice.invoice_number} d'un montant de ${invoice.amount}€ est arrivée à échéance le ${invoice.due_date}.\n\nPourriez-vous procéder au règlement rapidement ?\n\nCordialement,\nLe service comptabilité.`;
+            emailSubject = replaceVariables(profile?.rem_1_subject || "Rappel : Facture [invoiceNumber]", invoice, clientName);
+            emailText = replaceVariables(profile?.rem_1_text || "Bonjour [clientName], facture [invoiceNumber] en attente.", invoice, clientName);
           } else if (invoice.reminder_level === 1) {
-            emailSubject = `URGENT : Facture ${invoice.invoice_number} en retard`;
-            emailText = `Bonjour ${clientName},\n\nNous n'avons toujours pas reçu le paiement de la facture ${invoice.invoice_number} (${invoice.amount}€).\nMerci de régulariser la situation sous 48h.\n\nCordialement.`;
+            emailSubject = replaceVariables(profile?.rem_2_subject || "URGENT : Facture [invoiceNumber]", invoice, clientName);
+            emailText = replaceVariables(profile?.rem_2_text || "Bonjour [clientName], merci de régler la facture [invoiceNumber].", invoice, clientName);
           } else {
-            emailSubject = `MISE EN DEMEURE : Facture ${invoice.invoice_number}`;
-            emailText = `Bonjour,\n\nCeci est une mise en demeure concernant la facture ${invoice.invoice_number}. Sans réception de votre paiement de ${invoice.amount}€, des pénalités de retard légales seront appliquées.\n\nService Recouvrement.`;
+            emailSubject = replaceVariables(profile?.rem_3_subject || "MISE EN DEMEURE : [invoiceNumber]", invoice, clientName);
+            emailText = replaceVariables(profile?.rem_3_text || "Mise en demeure pour la facture [invoiceNumber].", invoice, clientName);
           }
 
-          // On envoie l'e-mail
-          await resend.emails.send({
+          // 1. TENTATIVE D'ENVOI RESEND
+          const { error: resendError } = await resend.emails.send({
             from: 'Recouvrement <onboarding@resend.dev>',
             to: clientEmail,
             subject: emailSubject,
             text: emailText,
           });
 
-          // On met à jour la base de données
-          await supabaseAdmin
+          if (resendError) {
+            console.error(`❌ Erreur Resend pour ${clientEmail}:`, resendError);
+          }
+
+          // 2. TENTATIVE DE MISE À JOUR SUPABASE
+          const { error: updateError } = await supabaseAdmin
             .from('invoices')
             .update({ 
               reminder_level: invoice.reminder_level + 1,
@@ -104,7 +97,12 @@ export async function GET(request: Request) {
             })
             .eq('id', invoice.id);
 
-          emailsSent++;
+          if (updateError) {
+            console.error(`❌ Erreur Supabase pour facture ${invoice.id}:`, updateError);
+          } else {
+            // On incrémente le compteur SEULEMENT si la mise à jour BDD a marché !
+            emailsSent++;
+          }
         }
       }
     }
