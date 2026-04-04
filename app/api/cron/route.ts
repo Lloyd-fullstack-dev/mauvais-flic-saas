@@ -47,8 +47,7 @@ export async function GET(request: Request) {
           .eq('id', clientId)
           .single();
         
-        const customInterval = profile?.reminder_interval_days || 7; 
-
+        const customInterval = invoice.custom_interval_days || profile?.reminder_interval_days || 7;
         let shouldSendEmail = false;
 
         if (invoice.reminder_level === 0) {
