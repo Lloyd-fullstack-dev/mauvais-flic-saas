@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+// NOUVEAU : On importe createClient directement pour fabriquer le passe-partout
+import { createClient } from '@supabase/supabase-js'; 
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+
+// NOUVEAU : On crée une connexion Supabase spéciale "Robot" avec la clé secrète qui contourne le RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET(request: Request) { 
   // --- LE CADENAS DE SÉCURITÉ ---
@@ -18,7 +25,7 @@ export async function GET(request: Request) {
   try {
     // 1. On cherche toutes les factures "en attente" (pending)
     // ATTENTION : J'ai rajouté "user_id" ici pour pouvoir lire le profil
-    const { data: invoices, error } = await supabase
+    const { data: invoices, error } = await supabaseAdmin
       .from('invoices')
       .select('*, clients(name, email, user_id)')
       .eq('status', 'pending');
@@ -41,7 +48,7 @@ export async function GET(request: Request) {
         // On gère le cas où clients serait un tableau selon la structure Supabase
         const clientId = Array.isArray(invoice.clients) ? invoice.clients[0]?.user_id : invoice.clients?.user_id;
         
-        const { data: profile } = await supabase
+        const { data: profile } = await supabaseAdmin
           .from('profiles')
           .select('reminder_interval_days')
           .eq('id', clientId)
@@ -89,7 +96,7 @@ export async function GET(request: Request) {
           });
 
           // On met à jour la base de données
-          await supabase
+          await supabaseAdmin
             .from('invoices')
             .update({ 
               reminder_level: invoice.reminder_level + 1,
