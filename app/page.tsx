@@ -8,11 +8,9 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [invoicesList, setInvoicesList] = useState<any[]>([]);
   
-  // NOUVEAU : Les états pour les paramètres
   const [intervalDays, setIntervalDays] = useState(7);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Formulaire facture
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -29,7 +27,6 @@ export default function Home() {
     if (data) setInvoicesList(data);
   };
 
-  // NOUVEAU : On va chercher les paramètres de l'utilisateur
   const fetchProfile = async (uid: string) => {
     const { data } = await supabase
       .from("profiles")
@@ -50,13 +47,12 @@ export default function Home() {
       } else {
         setUserId(session.user.id);
         fetchInvoices(session.user.id);
-        fetchProfile(session.user.id); // On charge ses paramètres
+        fetchProfile(session.user.id);
       }
     };
     checkUser();
   }, []);
 
-  // NOUVEAU : Sauvegarder le nouveau délai
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     const { error } = await supabase
@@ -107,126 +103,203 @@ export default function Home() {
     window.location.href = "/login";
   };
 
-  if (!userId) return <p className="text-center mt-20 text-gray-500">Vérification de la sécurité...</p>;
+  if (!userId) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="animate-pulse flex flex-col items-center">
+        <div className="h-12 w-12 bg-red-200 rounded-full mb-4"></div>
+        <p className="text-slate-500 font-medium">Vérification de la sécurité...</p>
+      </div>
+    </div>
+  );
+
+  // --- CALCUL DES STATISTIQUES EN DIRECT ---
+  const pendingAmount = invoicesList
+    .filter(inv => inv.status !== "paid")
+    .reduce((total, inv) => total + inv.amount, 0);
+
+  const recoveredAmount = invoicesList
+    .filter(inv => inv.status === "paid")
+    .reduce((total, inv) => total + inv.amount, 0);
+
+  const recoveredCount = invoicesList.filter(inv => inv.status === "paid").length;
+  // -----------------------------------------
 
   return (
-    <main className="max-w-4xl mx-auto p-8 text-gray-800">
-      
-      {/* En-tête */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-4xl font-extrabold text-red-600">Le Mauvais Flic 👮‍♂️</h1>
-          <p className="text-gray-500 mt-1">Tableau de bord</p>
-        </div>
-        <button onClick={handleLogout} className="text-sm border border-gray-300 px-4 py-2 rounded hover:bg-gray-100 transition">
-          Déconnexion
-        </button>
-      </div>
-
-      {/* NOUVEAU : Bloc Paramètres */}
-      <div className="bg-gray-100 p-4 rounded-xl mb-8 flex items-center justify-between border border-gray-200">
-        <div>
-          <h3 className="font-bold text-gray-700">Rythme des relances</h3>
-          <p className="text-sm text-gray-500">Combien de jours le robot doit-il attendre entre deux e-mails ?</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <input 
-            type="number" 
-            min="1" 
-            max="30" 
-            className="border p-2 rounded-lg w-20 text-center outline-none focus:ring-2 focus:ring-red-500" 
-            value={intervalDays} 
-            onChange={(e) => setIntervalDays(parseInt(e.target.value) || 1)} 
-          />
-          <span className="text-sm font-medium text-gray-600">jours</span>
+    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 text-slate-800 font-sans">
+      <main className="max-w-5xl mx-auto space-y-8">
+        
+        {/* En-tête (Header) */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="mb-4 sm:mb-0">
+            <h1 className="text-3xl font-black tracking-tight text-slate-900 flex items-center gap-3">
+              Le Mauvais Flic <span className="text-4xl">🚨</span>
+            </h1>
+            <p className="text-slate-500 mt-1 font-medium">L'automatisation au service de ta trésorerie.</p>
+          </div>
           <button 
-            onClick={handleSaveSettings} 
-            disabled={savingSettings}
-            className="ml-2 bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 text-sm font-bold transition"
+            onClick={handleLogout} 
+            className="text-sm font-medium text-slate-600 bg-slate-100 px-5 py-2.5 rounded-xl hover:bg-slate-200 hover:text-slate-900 transition-all"
           >
-            {savingSettings ? "..." : "Enregistrer"}
+            Déconnexion
           </button>
+        </header>
+
+        {/* NOUVEAU : Les 3 blocs de statistiques */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-red-500">
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Argent bloqué</p>
+            <p className="text-3xl font-black text-slate-900">{pendingAmount.toLocaleString('fr-FR')} €</p>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-emerald-500">
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Trésorerie sauvée</p>
+            <p className="text-3xl font-black text-slate-900">{recoveredAmount.toLocaleString('fr-FR')} €</p>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 border-l-4 border-l-blue-500">
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">Factures récupérées</p>
+            <p className="text-3xl font-black text-slate-900">{recoveredCount} <span className="text-lg text-slate-400 font-medium tracking-normal">dossiers</span></p>
+          </div>
         </div>
-      </div>
 
-      {/* Le formulaire facture */}
-      <div className="bg-white p-6 rounded-xl shadow-md border border-gray-100 mb-10">
-        <h2 className="text-xl font-bold mb-4">Ajouter une facture en retard</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nom du client</label>
-              <input type="text" required className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-red-500" value={clientName} onChange={(e) => setClientName(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">E-mail du client</label>
-              <input type="email" required className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-red-500" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* COLONNE GAUCHE : Paramètres */}
+          <div className="lg:col-span-1 space-y-8">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+              <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2 mb-4">
+                ⚙️ Paramètres globaux
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Rythme par défaut</label>
+                  <p className="text-xs text-slate-500 mb-3">Délai d'attente du robot entre deux e-mails (sera modifiable par facture plus tard).</p>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="30" 
+                      className="bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-2.5 w-24 text-center focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all" 
+                      value={intervalDays} 
+                      onChange={(e) => setIntervalDays(parseInt(e.target.value) || 1)} 
+                    />
+                    <span className="text-sm font-medium text-slate-500">jours</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleSaveSettings} 
+                  disabled={savingSettings}
+                  className="w-full bg-slate-900 text-white px-4 py-2.5 rounded-xl hover:bg-slate-800 text-sm font-bold shadow-md shadow-slate-900/10 transition-all active:scale-[0.98]"
+                >
+                  {savingSettings ? "Enregistrement..." : "Enregistrer"}
+                </button>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">N° Facture</label>
-              <input type="text" required className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-red-500" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Montant (€)</label>
-              <input type="number" step="0.01" required className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-red-500" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Échéance</label>
-              <input type="date" required className="w-full border rounded-lg p-2 outline-none focus:ring-2 focus:ring-red-500" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+
+          {/* COLONNE DROITE : Formulaire */}
+          <div className="lg:col-span-2">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+              <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                ➕ Ajouter une facture en retard
+              </h2>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Nom du client</label>
+                    <input type="text" required placeholder="Ex: Studio Dupont" className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400" value={clientName} onChange={(e) => setClientName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">E-mail du client</label>
+                    <input type="email" required placeholder="contact@dupont.fr" className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">N° Facture</label>
+                    <input type="text" required placeholder="FA-2026-01" className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Montant (€)</label>
+                    <input type="number" step="0.01" required placeholder="1500.00" className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-slate-400" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Date d'échéance</label>
+                    <input type="date" required className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-3 focus:bg-white focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all text-slate-500" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                  </div>
+                </div>
+                <button type="submit" disabled={loading} className={`w-full mt-2 font-bold py-3.5 px-4 rounded-xl shadow-lg transition-all active:scale-[0.98] ${loading ? 'bg-red-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-red-500/30 hover:from-red-700 hover:to-red-600'}`}>
+                  {loading ? "Enregistrement en cours..." : "Lâcher le Mauvais Flic 🐕"}
+                </button>
+              </form>
             </div>
           </div>
-          <button type="submit" disabled={loading} className={`w-full mt-4 text-white font-bold py-3 rounded-lg transition-colors ${loading ? 'bg-red-400' : 'bg-red-600 hover:bg-red-700'}`}>
-            {loading ? "Enregistrement..." : "Activer le Mauvais Flic 🚨"}
-          </button>
-        </form>
-      </div>
+        </div>
 
-      {/* La liste des factures */}
-      <h2 className="text-2xl font-bold mb-4">Mes factures en cours</h2>
-      <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-        {invoicesList.length === 0 ? (
-          <p className="p-6 text-center text-gray-500">Aucune facture pour le moment. Tout le monde a payé ! 🎉</p>
-        ) : (
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200 text-sm text-gray-600">
-                <th className="p-4 font-medium">Client</th>
-                <th className="p-4 font-medium">N° Facture</th>
-                <th className="p-4 font-medium">Montant</th>
-                <th className="p-4 font-medium">Statut</th>
-                <th className="p-4 font-medium text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoicesList.map((invoice) => (
-                <tr key={invoice.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="p-4 font-semibold">{invoice.clients?.name}</td>
-                  <td className="p-4 text-gray-600">{invoice.invoice_number}</td>
-                  <td className="p-4 font-medium">{invoice.amount} €</td>
-                  <td className="p-4">
-                    {invoice.status === "paid" ? (
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Payée ✅</span>
-                    ) : (
-                      <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold">
-                        En attente (Relances : {invoice.reminder_level})
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-4 text-right">
-                    {invoice.status !== "paid" && (
-                      <button onClick={() => handleMarkAsPaid(invoice.id)} className="text-sm bg-green-600 text-white px-3 py-1.5 rounded-md hover:bg-green-700 transition">
-                        J'ai été payé !
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </main>
+        {/* SECTION BASSE : La liste des factures */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 bg-white">
+            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              📂 Mes factures en cours
+            </h2>
+          </div>
+          
+          {invoicesList.length === 0 ? (
+            <div className="p-12 text-center">
+              <span className="text-4xl mb-4 block">🎉</span>
+              <p className="text-slate-500 font-medium">Aucune facture en retard pour le moment.</p>
+              <p className="text-slate-400 text-sm mt-1">Vos clients sont exemplaires !</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                    <th className="p-5">Client</th>
+                    <th className="p-5">N° Facture</th>
+                    <th className="p-5">Montant</th>
+                    <th className="p-5">Statut</th>
+                    <th className="p-5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {invoicesList.map((invoice) => (
+                    <tr key={invoice.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="p-5">
+                        <p className="font-bold text-slate-900">{invoice.clients?.name}</p>
+                      </td>
+                      <td className="p-5 text-slate-500 font-medium">{invoice.invoice_number}</td>
+                      <td className="p-5 font-bold text-slate-900">{invoice.amount} €</td>
+                      <td className="p-5">
+                        {invoice.status === "paid" ? (
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-200/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            Payée
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-200/50">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                            En attente (Relances : {invoice.reminder_level})
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-5 text-right">
+                        {invoice.status !== "paid" && (
+                          <button 
+                            onClick={() => handleMarkAsPaid(invoice.id)} 
+                            className="text-sm bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:border-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 font-semibold shadow-sm transition-all active:scale-[0.96] opacity-0 group-hover:opacity-100 sm:opacity-100"
+                          >
+                            Marquer payée
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+      </main>
+    </div>
   );
 }
