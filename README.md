@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Le Mauvais Flic - SaaS d'automatisation de recouvrement
 
-## Getting Started
+> **Lien vers l'application en direct :  https://mauvais-flic-saas.vercel.app/
 
-First, run the development server:
+## Le Projet
+Pour les Entreprises, courir après les factures impayées est une tâche angoissante, chronophage, et qui détériore les relations commerciales. 
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+**Le Mauvais Flic** est une application SaaS full-stack conçue pour automatiser cette tâche ingrate. L'utilisateur ajoute ses factures en attente et personnalise son ton. L'outil prend ensuite le relais et envoie de manière autonome des e-mails de relance à intervalles réguliers (de la piqûre de rappel amicale à la mise en demeure).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Stack Technique
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Frontend :** Next.js , React, TailwindCSS
+* **Langage :** TypeScript
+* **Backend & Base de données :** Supabase (PostgreSQL)
+* **Authentification :** Supabase Auth
+* **Mailing :** API Resend
+* **Automatisation :** Cron Jobs
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Fonctionnalités Principales
+1. **Authentification sécurisée :** Inscription et connexion gérées via Supabase avec isolation des données.
+2. **Dashboard interactif :** Ajout, modification, et suivi des factures impayées.
+3. **Personnalisation dynamique :** Création de modèles d'e-mails sur 3 niveaux de pression avec variables dynamiques (`[clientName]`, `[amount]`, etc.).
+4. **Moteur de relance autonome :** Un script tourne en tâche de fond pour vérifier quotidiennement les échéances, incrémenter le niveau de relance, et déclencher les e-mails via Resend.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Focus Architecture : Le Moteur d'Automatisation
+La véritable valeur ajoutée de ce projet réside dans son backend. 
+Le fichier `app/api/cron/route.ts` agit comme un robot indépendant. Sécurisé par un `CRON_SECRET`, il contourne intelligemment la sécurité front-end via une *Service Role Key* pour :
+- Interroger les factures en attente.
+- Calculer le temps écoulé depuis la dernière relance.
+- Formater les textes dynamiques.
+- Appeler l'API Resend et mettre à jour le statut en base de données de façon transactionnelle.
